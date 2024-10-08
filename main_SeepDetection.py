@@ -1,54 +1,127 @@
 """
 Program Name: main_SeepDetection.py
 Author: Yutong Zhang
-Date: 2024-06-11
+Date: 2024-06-12
 Description:
 1)  This program is written for the CGG Oil Seep Detection Exercise.
-2)  This program is based on a popular third-party library for image segmentation. The GitHub link is as below:
+2)  This program is based on a popular third-party library for image segmentation. The GitHub link is as follows:
     https://github.com/qubvel/segmentation_models.pytorch.git
-3)  Steps to run this program under the above-mentioned third-party library: (it is recommended to send .txt files to your email, so please contact me if you want a packaged ZIP version)
+3)  Clarification about my contributions:
+    a)  Went through the entire repository and got the baseline working (some contents are outdated, so I needed to
+        modify them to ensure everything works).
+    b)  Modified it to work for the seep detection exercise. The main changes are in "SeepDetectionDataset",
+        "format_SeepDetectionDataset" and "SeepDetectionModel".
+    c)  Added some code and functions to facilitate further coding or investigations. For example:
+        1.  Summarized adjustable parameters.
+        2.  Enhanced the switch between binary and multiclass segmentation using a global setting and pre-written
+            essential codes for each.
+        3.  Added mask value checks before training.
+        4.  Implemented last model saving.
+    d)  Rewrote and added annotations to enhance clarity and ease of understanding.
+    e)  Experimented with different tasks and architectures. Below are some comparisons and analyses:
+        (Results sorted from better to worse overall performance)
+        Binary segmentation (seg_mode="binary"):
+            Training and test results:
+                UnetPlusPlus    +   epoch=20:   loss=0.171  valid_per_image_iou=0.383   valid_dataset_iou=0.455
+                                                            train_per_image_iou=0.655   train_dataset_iou=0.758
+                Unet            +   epoch=20:   loss=0.221  valid_per_image_iou=0.397   valid_dataset_iou=0.448
+                                                            train_per_image_iou=0.569   train_dataset_iou=0.696
+                PAN             +   epoch=20:   loss=0.258  valid_per_image_iou=0.339   valid_dataset_iou=0.437
+                                                            train_per_image_iou=0.457   train_dataset_iou=0.612
+                UnetPlusPlus    +   epoch=8:    loss=0.600  valid_per_image_iou=0.344   valid_dataset_iou=0.408
+                                                            train_per_image_iou=0.379   train_dataset_iou=0.457
+                FPN             +   epoch=8:    loss=0.358  valid_per_image_iou=0.246   valid_dataset_iou=0.315
+                                                            train_per_image_iou=0.336   train_dataset_iou=0.468
+            Analysis:
+                1.  UnetPlusPlus is superior to Unet: the additional skip connections and nested structures provide
+                    benefits.
+                2.  UnetPlusPlus outperforms PAN and FPN: for binary segmentation, given that seeps typically exhibit
+                    distinct image features (e.g., darker continuous areas), capturing detailed information appears
+                    more efficient than focusing on multiscale features.
+                3.  Upon reviewing predicted mask plots, UnetPlusPlus proves to be a good architecture for binary
+                    segmentation in seep detection. Performance could further improve with additional data,
+                    incorporation of better pre-trained models, and fine-tuning of parameters.
+        Multiclass segmentation (seg_mode="multiclass"):
+            Training and test results:
+                UnetPlusPlus    +   epoch=20:   loss=0.512  valid_per_image_iou=0.979   valid_dataset_iou=0.979
+                                                            train_per_image_iou=0.978   train_dataset_iou=0.977
+                PAN             +   epoch=20:   loss=0.412  valid_per_image_iou=0.968   valid_dataset_iou=0.966
+                                                            train_per_image_iou=0.976   train_dataset_iou=0.975
+                MAnet           +   epoch=20:   loss=0.592  valid_per_image_iou=0.969   valid_dataset_iou=0.968
+                                                            train_per_image_iou=0.971   train_dataset_iou=0.970
+                FPN             +   epoch=8:    loss=0.603  valid_per_image_iou=0.956   valid_dataset_iou=0.954
+                                                            train_per_image_iou=0.960   train_dataset_iou=0.959
+                Unet            +   epoch=8:    loss=0.695  valid_per_image_iou=0.825   valid_dataset_iou=0.786
+                                                            train_per_image_iou=0.841   train_dataset_iou=0.814
+                DeepLabV3Plus   +   epoch=20:   loss=0.599  valid_per_image_iou=0.818   valid_dataset_iou=0.754
+                                                            train_per_image_iou=0.817   train_dataset_iou=0.760
+                DeepLabV3       +   epoch=20:   loss=0.532  valid_per_image_iou=0.829   valid_dataset_iou=0.759
+                                                            train_per_image_iou=0.728   train_dataset_iou=0.640
+                Unet            +   epoch=20:   loss=0.598  valid_per_image_iou=0.753   valid_dataset_iou=0.670
+                                                            train_per_image_iou=0.644   train_dataset_iou=0.543
+                DeepLabV3       +   epoch=8:    loss=0.669  valid_per_image_iou=0.623   valid_dataset_iou=0.535
+                                                            train_per_image_iou=0.654   train_dataset_iou=0.586
+                UnetPlusPlus    +   epoch=8:    loss=0.684  valid_per_image_iou=0.588   valid_dataset_iou=0.491
+                                                            train_per_image_iou=0.593   train_dataset_iou=0.511
+            Analysis:
+                1.  It is easier to classify a pixel as 0 (non-seep) in multiclass segmentation, which inflates the IoU
+                    scores compared to binary segmentation, since IoUs in multiclass include intersections with non-seep
+                    areas. These areas can be easily excluded for evaluation, but the value of this depends on whether
+                    the focus is on correctly classifying seep areas or equally significant classification of non-seep
+                    areas.
+                2.  UnetPlusPlus, PAN, MAnet, and FPN exhibit similar performances in multiclass segmentation. This
+                    suggests that it might be both important to focus on fine-grained details and features at different
+                    scales, since the seep class is not something that could be detected straightforwardly like the seep
+                    or non-seep classification. However, the dataset's small size (only 790 images in total, averaging
+                    about 100 images per class across 8 classes) may limit the ability to differentiate architecture
+                    features, potentially reflecting dataset limitations rather than architectural differences.
+                3.  DeepLabV3Plus outperforms DeepLabV3: the additional decoder structure is beneficial.
+                4.  UnetPlusPlus epoch = 20 better than Unet epoch = 8 or 20, but UnetPlusPlus epoch = 8 worse: the
+                    additional skip connections and nested structures are beneficial for performance, but they also
+                    require more training.
+                5.  Amazing to see Unet epoch = 8 better than Unet epoch = 20. This variability might stem from the
+                    inherent randomness in learning processes, and more trials would be helpful for further analysis.
+                6.  As mentioned before, increasing the dataset size, integrating better pre-trained models, and
+                    fine-tuning parameters further are likely to enhance performance
+4)  It is recommended to send ".txt" files to your email, so please contact me if you want a packaged ZIP version or
+    have any other questions: katsumi.zyt@gmail.com
+5)  Steps to run this program using the aforementioned third-party library:
     a)  Clone the GitHub repository.
-    b)  Put this program under the root path of the repository.
-    c)  Put the training images under: ./dataset_SeepDetection/train_images_256.
-        Put the training masks under: ./dataset_SeepDetection/train_masks_256.
-    d)  Install the dependencies following instructions on the GitHub repository.
+    b)  Place this program in the root path of the repository.
+    c)  Place the training images in: ./dataset_SeepDetection/train_images_256
+        Place the training masks in: ./dataset_SeepDetection/train_masks_256
+    d)  Install the dependencies as instructed in the GitHub repository.
     e)  Adjust some parameters if needed:
         seg_mode:
-            "binary": segment regions that contain seeps
-            "multiclass": classify the seeps
+            "binary": segment regions containing seeps.
+            "multiclass": classify the seeps.
         images_type:
-            set to "gray" since the seep detection images are gray
+            Set to "gray" as the seep detection images are grayscale.
         images_dir, masks_dir:
-            change the paths correspondingly if putting the images and masks somewhere else
+            Modify paths accordingly if images and masks are stored elsewhere.
         transform:
-            any customized transformations for the images and masks
-        batch_size
+            Apply customized transformations to images and masks.
+        batch_size:
+            Default setting is 16.
         architecture:
-            options and their corresponding main features are listed in the below annotations
+            Refer to annotations below for options and their main features.
         encoder:
-            see the GitHub repository for more information
-        learning_rate
+            See GitHub repository for detailed information.
+        learning_rate:
+            Learning rate used for Adam optimizer.
         num_classes:
-            only used when seg_mode = "multiclass", set to 8 since we have 0~7 mask values (seep classes)
-        epochs
-        gpus
-    f)  Currently, dice loss is used for training, and IoU (Intersection over Union, a common metric used for image segmentation) is reported. The library also provides other losses and metrics, but further detailed modifications for the SeepDetectionModel class would be needed to realize each of them.
-    g)  Run the program.
-4)  Clarification about my contributions:
-    a)  Went through the whole repository and got the baseline working (some contents are out-dated, so need to modify them to get everything work).
-    b)  Modified to make it work for the seep detection exercise. Main changes are in:
-        SeepDetectionDataset
-        format_SeepDetectionDataset
-        SeepDetectionModel
-    c)  Added some codes and functions to make further codings or investigations easier. For example:
-        Summarized the adjustable parameters.
-        Made the switching between binary and multiclass segmentation more fluent by using a global setting and pre-writing the respective essential codes for each.
-        Added mask value check before training.
-        Added last model saving.
-    d)  Rewrote and added some annotations to make everything clearer and easier to understand.
-    e)  Did some experiments with different settings (was not able to run for large epoch numbers or try every possible setting due to computation and time limits)
-        seg_mode="binary" + architecture="FNP" + epochs=8
-        seg_mode="multiclass" + architecture="FNP" + epochs=8
+            Only applicable when seg_mode = "multiclass". Set to 8 for mask values ranging from 0 to 7 (seep classes).
+        epochs:
+            Number of training epochs.
+        gpus:
+            Number of GPUs to train on (int) or which GPUs to train on (list or str).
+    f)  Currently, dice loss is used for training, and IoU (Intersection over Union, a common metric for image
+        segmentation) is reported. The library offers additional losses and metrics, but implementing them in the
+        "SeepDetectionModel" class would require specific modifications.
+    g)  Proceed to run the program.
+    h)  Plots will be displayed, and the model will be saved to the root path with a timestamped name.
+6)  Seep detection is crucial for various applications such as exploration (e.g., assisting teams in locating oil or gas
+    accumulations) and pollution control (e.g., identifying potential oil spills for early detection and response).
 """
 
 import glob
@@ -172,14 +245,14 @@ if __name__ == '__main__':
     # "DeepLabV3": atrous convolution and spatial pyramid pooling to capture multiscale context information
     # "DeepLabV3Plus": encoder-decoder structure to refine the segmentation results, especially along object boundaries
     # "PAN": pyramid pooling + attention mechanisms -> focus on relevant features at multiple scales
-    architecture = "Unet"
+    architecture = "UnetPlusPlus"
 
     # choose an encoder, options see GitHub repository
     encoder = "resnet34"
 
     learning_rate = 0.0001  # for Adam optimizer
     num_classes = 8  # only used for multiclass, correspond to mask values 0~7
-    epochs = 20
+    epochs = 8
     gpus = 1
     log_every_n_steps = 5  # total step number related to both training dataset size and batch size
 
